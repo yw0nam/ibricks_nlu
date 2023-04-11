@@ -3,3 +3,6 @@ numpy
 pandas
 transformers==4.12.1
 sklearn
+absl-py
+rouge_score
+nltk
