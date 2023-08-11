@@ -1,8 +1,7 @@
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM#, TextDataset, DataCollatorForLanguageModeling
+from transformers import AutoTokenizer, AutoModelForCausalLM, BertTokenizerFast
 from custom_data import textDataset, dataCollator
 from transformers import Trainer, TrainingArguments
-import torch
 import os
 import argparse
 
@@ -14,13 +13,13 @@ def define_argparser():
     """
     p = argparse.ArgumentParser()
     p.add_argument('--data_root', type=str, default='./data/')
-    p.add_argument('--gradient_accumulation_steps', type=int, default=1)
-    p.add_argument('--batch_size_per_device', type=int, default=128)
+    p.add_argument('--gradient_accumulation_steps', type=int, default=2)
+    p.add_argument('--batch_size_per_device', type=int, default=64)
     p.add_argument('--n_epochs', type=int, default=20)
-    p.add_argument('--warmup_ratio', type=float, default=.25)
-    p.add_argument('--max_length', type=int, default=512)
+    p.add_argument('--warmup_ratio', type=float, default=.2)
+    p.add_argument('--max_length', type=int, default=256)
     p.add_argument('--model_save_path', type=str, default='./models_zoo/skt_kogpt2-base-v2/')
-    # p.add_argument('--model_address', type=str, default='klue/bert-base')
+    p.add_argument('--model_address', type=str, default='skt/kogpt2-base-v2')
 
     config = p.parse_args()
 
@@ -32,31 +31,20 @@ def main(config):
     Args:
         config (argparse.Namespace): Command line arguments
     """
-    tokenizer = AutoTokenizer.from_pretrained(
-        "skt/kogpt2-base-v2",
-        bos_token='</s>', eos_token='</s>', unk_token='<unk>',
-        pad_token='<pad>', mask_token='<mask>'
-    )
-    
-    model = AutoModelForCausalLM.from_pretrained('skt/kogpt2-base-v2')
-    
-    
-    # train_dataset = TextDataset(
-    #     tokenizer=tokenizer,
-    #     file_path=os.path.join(config.data_root,"train.txt"),
-    #     block_size=128
-    # )
-    # val_dataset = TextDataset(
-    #     tokenizer=tokenizer,
-    #     file_path=os.path.join(config.data_root,"val.txt"),
-    #     block_size=128
-    # )
-    # data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+    if config.model_address == "skt/kogpt2-base-v2":
+        tokenizer = AutoTokenizer.from_pretrained(
+            "skt/kogpt2-base-v2",
+            bos_token='</s>', eos_token='</s>', unk_token='<unk>', sep_token="</s>",
+            pad_token='<pad>', mask_token='<mask>'
+        )
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(config.model_address, sep_token="</s>")
+    model = AutoModelForCausalLM.from_pretrained(config.model_address)    
     
     train_dataset = textDataset(os.path.join(config.data_root,"train.tsv"))
     val_dataset = textDataset(os.path.join(config.data_root,"val.tsv"))
     collator = dataCollator(tokenizer=tokenizer, 
-                            max_length=128, 
+                            max_length=config.max_length, 
                             with_text=False, 
                             model_type='causal_lm')
     
@@ -82,9 +70,9 @@ def main(config):
         warmup_steps=n_warmup_steps,
         fp16=True,
         evaluation_strategy='steps',
-        logging_steps=10,
+        logging_steps=n_total_iterations // 5,
         save_strategy ='steps',
-        save_steps=10,
+        save_steps=n_total_iterations // 5,
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         load_best_model_at_end=True,
         prediction_loss_only=True,

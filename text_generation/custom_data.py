@@ -2,6 +2,20 @@ import torch
 from torch.utils.data import Dataset
 import pandas as pd
 
+class MyDataset(Dataset):
+
+    def __init__(self, tsv_path, tokenizer):
+        df = pd.read_csv(tsv_path, sep='\t', names=['input_seq', 'output_seq'])
+        self.encodings = tokenizer((df['input_seq']+ tokenizer.sep_token+df['output_seq']).to_list(), truncation=True, padding=True)
+        
+    def __len__(self):
+        return len(self.encodings['input_ids'])
+    
+    def __getitem__(self, idx):
+        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+        item['labels'] = item['input_ids']
+        return item
+    
 class textDataset(Dataset):
 
     def __init__(self, tsv_path):
@@ -15,7 +29,20 @@ class textDataset(Dataset):
         output_seq = str(self.df['output_seq'].iloc[idx])
 
         return input_seq + '\t' + output_seq
-        
+
+class textDataset_inference(Dataset):
+
+    def __init__(self, tsv_path, eos_token='</s>'):
+        self.df = pd.read_csv(tsv_path, sep='\t', names=['input_seq', 'output_seq'])
+        self.eos_token = eos_token
+    def __len__(self):
+        return len(self.df)
+    
+    def __getitem__(self, idx):
+        input_seq = str(self.df['input_seq'].iloc[idx])
+
+        return input_seq + self.eos_token
+    
 class dataCollator():
 
     def __init__(self, tokenizer, max_length, with_text=True, model_type='causal_lm'):
@@ -50,7 +77,7 @@ class dataCollator():
                 'labels': output_encoding['input_ids'],
             }
         elif self.model_type == 'causal_lm':
-            seq = [input_seq+self.tokenizer.eos_token+output_seq for input_seq, output_seq in zip(input_seq,output_seq)]
+            seq = [input_seq+self.tokenizer.sep_token+output_seq for input_seq, output_seq in zip(input_seq,output_seq)]
             encoding = self.tokenizer(
                 seq,
                 padding=True,
